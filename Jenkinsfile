@@ -11,7 +11,7 @@ pipeline {
 
   environment {
     IMAGE_REPO = 'bomeravi/react-portfolio'
-    DOCKER_CREDENTIALS_ID = 'github-creds'
+    DOCKER_CREDENTIALS_ID = 'dockerhub-creds'
   }
 
   stages {
