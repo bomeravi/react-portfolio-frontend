@@ -7,6 +7,7 @@ pipeline {
 
   parameters {
     string(name: 'IMAGE_TAG', defaultValue: '', description: 'Docker image tag to build and push (leave empty to use v${BUILD_NUMBER})')
+    password(name: 'VITE_PHONE', defaultValue: '', description: 'Optional override for VITE_PHONE in .env.production')
   }
 
   environment {
@@ -35,6 +36,25 @@ pipeline {
     stage('Checkout App') {
       steps {
         checkout scm
+      }
+    }
+
+    stage('Prepare Env') {
+      steps {
+        sh '''
+          set -eu
+          if [ ! -f .env.production ]; then
+            cp .env.example .env.production
+          fi
+
+          if [ -n "${VITE_PHONE:-}" ]; then
+            if grep -q '^VITE_PHONE=' .env.production; then
+              sed -i "s|^VITE_PHONE=.*|VITE_PHONE=${VITE_PHONE}|" .env.production
+            else
+              echo "VITE_PHONE=${VITE_PHONE}" >> .env.production
+            fi
+          fi
+        '''
       }
     }
 
