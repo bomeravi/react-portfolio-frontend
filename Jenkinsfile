@@ -32,7 +32,10 @@ pipeline {
 
     stage('Build Image') {
       steps {
-        sh 'docker build -t ${IMAGE_REPO}:${IMAGE_TAG} .'
+        sh '''
+          export DOCKER_BUILDKIT=1
+          docker build --progress=plain -t ${IMAGE_REPO}:${IMAGE_TAG} .
+        '''
       }
     }
 
