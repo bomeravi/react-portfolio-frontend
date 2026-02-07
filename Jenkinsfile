@@ -6,12 +6,20 @@ pipeline {
   }
 
   parameters {
-    string(name: 'IMAGE_TAG', defaultValue: 'v1.2.3', description: 'Docker image tag to build and push')
+    string(name: 'IMAGE_TAG', defaultValue: '', description: 'Docker image tag to build and push (leave empty to use v${BUILD_NUMBER})')
   }
 
   environment {
     IMAGE_REPO = 'bomeravi/react-portfolio'
     DOCKER_CREDENTIALS_ID = 'dockerhub-creds'
+    K8S_REPO_URL = 'git@github.com:bomeravi/k8s-react-portfolio.git'
+    K8S_REPO_BRANCH = 'main'
+    K8S_REPO_DIR = 'k8s-react-portfolio'
+    K8S_GIT_CREDENTIALS_ID = 'k8s-git-ssh'
+    K8S_VALUES_FILE = 'k8s/helm/react-portfolio/values.yaml'
+    K8S_CHART_FILE = 'k8s/helm/react-portfolio/Chart.yaml'
+    GIT_USER_NAME = 'jenkins'
+    GIT_USER_EMAIL = 'jenkins@local'
   }
 
   stages {
@@ -19,12 +27,12 @@ pipeline {
       steps {
         script {
           def tag = params.IMAGE_TAG?.trim()
-          env.IMAGE_TAG = tag ? tag : 'v1.2.3'
+          env.IMAGE_TAG = tag ? tag : "v${env.BUILD_NUMBER}"
         }
       }
     }
 
-    stage('Checkout') {
+    stage('Checkout App') {
       steps {
         checkout scm
       }
@@ -44,6 +52,44 @@ pipeline {
         withCredentials([usernamePassword(credentialsId: env.DOCKER_CREDENTIALS_ID, usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_PASS')]) {
           sh 'echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USER" --password-stdin'
           sh 'docker push ${IMAGE_REPO}:${IMAGE_TAG}'
+        }
+      }
+    }
+
+    stage('Checkout K8s Repo') {
+      steps {
+        dir(env.K8S_REPO_DIR) {
+          deleteDir()
+          checkout([$class: 'GitSCM',
+            branches: [[name: "*/${env.K8S_REPO_BRANCH}"]],
+            userRemoteConfigs: [[url: env.K8S_REPO_URL, credentialsId: env.K8S_GIT_CREDENTIALS_ID]]
+          ])
+        }
+      }
+    }
+
+    stage('Update K8s Image Tag') {
+      steps {
+        dir(env.K8S_REPO_DIR) {
+          sh '''
+            set -euo pipefail
+            git config user.name "${GIT_USER_NAME}"
+            git config user.email "${GIT_USER_EMAIL}"
+
+            sed -i "s/^  tag:.*/  tag: ${IMAGE_TAG}/" "${K8S_VALUES_FILE}"
+            sed -i "s/^appVersion:.*/appVersion: \\"${IMAGE_TAG}\\"/" "${K8S_CHART_FILE}"
+
+            if [ -z "$(git status --porcelain)" ]; then
+              echo "No changes to commit."
+              exit 0
+            fi
+
+            git add "${K8S_VALUES_FILE}" "${K8S_CHART_FILE}"
+            git commit -m "chore: bump image tag to ${IMAGE_TAG}"
+          '''
+          sshagent([env.K8S_GIT_CREDENTIALS_ID]) {
+            sh 'git push origin HEAD:${K8S_REPO_BRANCH}'
+          }
         }
       }
     }
