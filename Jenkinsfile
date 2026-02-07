@@ -15,6 +15,15 @@ pipeline {
   }
 
   stages {
+    stage('Resolve Tag') {
+      steps {
+        script {
+          def tag = params.IMAGE_TAG?.trim()
+          env.IMAGE_TAG = tag ? tag : 'v1.2.3'
+        }
+      }
+    }
+
     stage('Checkout') {
       steps {
         checkout scm
