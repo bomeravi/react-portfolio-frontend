@@ -64,6 +64,7 @@ pipeline {
             branches: [[name: "*/${env.K8S_REPO_BRANCH}"]],
             userRemoteConfigs: [[url: env.K8S_REPO_URL, credentialsId: env.K8S_GIT_CREDENTIALS_ID]]
           ])
+          sh 'git remote set-url origin ${K8S_REPO_URL}'
         }
       }
     }
@@ -72,7 +73,7 @@ pipeline {
       steps {
         dir(env.K8S_REPO_DIR) {
           sh '''
-            set -euo pipefail
+            set -eu
             git config user.name "${GIT_USER_NAME}"
             git config user.email "${GIT_USER_EMAIL}"
 
@@ -87,8 +88,12 @@ pipeline {
             git add "${K8S_VALUES_FILE}" "${K8S_CHART_FILE}"
             git commit -m "chore: bump image tag to ${IMAGE_TAG}"
           '''
-          sshagent([env.K8S_GIT_CREDENTIALS_ID]) {
-            sh 'git push origin HEAD:${K8S_REPO_BRANCH}'
+          withCredentials([sshUserPrivateKey(credentialsId: env.K8S_GIT_CREDENTIALS_ID, keyFileVariable: 'SSH_KEY')]) {
+            sh '''
+              set -eu
+              export GIT_SSH_COMMAND="ssh -i ${SSH_KEY} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+              git push origin HEAD:${K8S_REPO_BRANCH}
+            '''
           }
         }
       }
